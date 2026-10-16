@@ -1,0 +1,10 @@
+node_modules/
+dist/
+dev-dist/
+.env
+.env.local
+.venv/
+__pycache__/
+backend/data/
+*.pyc
+cookies.txt
