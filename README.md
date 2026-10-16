@@ -1,61 +1,47 @@
 # Stems Studio
 
-PWA no estilo Moises: cole um link do YouTube, a IA separa **voz, bateria, baixo, piano, guitarra e outros**, e você estuda com um mixer (volume, mute, solo, pan, velocidade sem mudar o tom, loop A-B, comparar com o original). As músicas e playlists ficam salvas **no próprio aparelho** e tocam offline.
+PWA no estilo Moises: escolha um arquivo de áudio e a IA separa **voz, bateria, baixo, piano, guitarra e outros**. Depois é só estudar com o mixer: volume, mute, solo e pan por faixa, velocidade sem mudar o tom, loop A-B e comparação com o original.
+
+Tudo roda **no navegador**. Não existe servidor e nenhum áudio é enviado para a internet. O app é estático e é hospedado de graça na Vercel.
 
 ## Como funciona
 
-```
- PWA (Vercel, estático)  ──link──▶  Servidor de separação (Python)
-  React + IndexedDB      ◀─MP3s──   yt-dlp + Demucs htdemucs_6s
-```
+1. O navegador decodifica o arquivo (MP3, M4A, WAV, FLAC, OGG…) em 44,1 kHz estéreo.
+2. Um Web Worker roda o **Demucs `htdemucs_6s`** (Meta, licença MIT), [exportado para ONNX](https://huggingface.co/StemSplitio/htdemucs-6s-onnx), com o **ONNX Runtime Web** em WebAssembly com várias threads. O áudio é processado em janelas de 7,8 s com sobreposição.
+3. Cada faixa é codificada em MP3 (até 320 kbps) com lamejs.
+4. As faixas, a biblioteca e as playlists ficam salvas no aparelho (IndexedDB) e tocam offline.
 
-- **frontend/**: React + TypeScript + Vite + vite-plugin-pwa. Publicado na Vercel.
-- **backend/**: FastAPI + yt-dlp + [Demucs](https://github.com/facebookresearch/demucs) (modelo `htdemucs_6s`, MP3 320 kbps).
-  A Vercel não consegue rodar essa parte (PyTorch passa do limite de tamanho das funções, cada música leva minutos e o YouTube bloqueia IPs da Vercel). Por isso ela roda no seu PC (com GPU) ou num Hugging Face Space gratuito.
+O modelo (~136 MB) é baixado do Hugging Face **só na primeira separação** e fica guardado no Cache Storage.
 
-Depois que uma música é separada, o app baixa as faixas para o IndexedDB. Daí em diante ela toca mesmo com o servidor desligado.
+### Desempenho
 
-## 1. Servidor no seu PC (recomendado: rápido, usa a GPU)
+Num computador com 8 núcleos, cada trecho de 7,8 s leva cerca de 6 s, então uma música de 4 minutos fica pronta em uns 4 minutos. A IA usa por volta de 1 GB de RAM. Em celulares funciona, mas é bem mais lento, e aparelhos com pouca memória podem não conseguir.
 
-Pré-requisitos: Python 3.10+, ffmpeg, Node.js (o yt-dlp usa para o YouTube).
+## Desenvolvimento
 
-```powershell
-cd backend
-python -m venv .venv
-.\.venv\Scripts\pip install torch --index-url https://download.pytorch.org/whl/cu126   # GPU NVIDIA
-.\.venv\Scripts\pip install -r requirements.txt
-winget install Cloudflare.cloudflared      # túnel HTTPS gratuito
-.\start-server.ps1 -Token "uma-senha-sua"
+```bash
+npm install
+npm run dev       # http://localhost:5173
+npm run build     # gera dist/
+npm run preview   # serve dist/ com os headers corretos
 ```
 
-O script mostra um endereço `https://xxxx.trycloudflare.com`. No app, abra **Ajustes (⚙)**, cole o endereço e o token, e clique em **Testar e salvar**.
-O endereço do túnel rápido muda a cada vez que o script é aberto. Para ter um endereço fixo, use um túnel nomeado da Cloudflare (precisa de um domínio) ou o Tailscale Funnel (gratuito).
+`npm run dev` e `npm run build` copiam o runtime do ONNX (`.mjs` + `.wasm`) para `public/ort/`. Ele precisa ser servido como arquivo separado; se for empacotado junto com o worker, as threads travam.
 
-Use sempre um token quando o servidor estiver exposto na internet; sem ele, qualquer pessoa com o link pode usar sua GPU.
+## Deploy na Vercel
 
-Variáveis opcionais: `DEMUCS_MODEL` (padrão `htdemucs_6s`; `htdemucs_ft` tem qualidade um pouco melhor, mas só separa 4 faixas, sem piano/guitarra), `DEMUCS_SHIFTS` (padrão 2; mais = melhor e mais lento), `MP3_BITRATE` (padrão 320), `YTDLP_COOKIES`.
+Importe o repositório. O `vercel.json` já configura:
+- o build (Vite → `dist/`);
+- os headers `Cross-Origin-Opener-Policy: same-origin` e `Cross-Origin-Embedder-Policy: require-corp`. **Eles são obrigatórios**: sem eles o navegador bloqueia o `SharedArrayBuffer` e a IA roda com um único núcleo, cerca de 3× mais devagar.
 
-## 2. Alternativa: servidor no Hugging Face Spaces (grátis, só CPU)
+## Usando o app
 
-1. Crie um Space com **SDK: Docker** e envie `backend/Dockerfile`, `backend/main.py` e `backend/requirements.txt`.
-2. Em *Settings → Variables and secrets*, crie o secret `API_TOKEN`.
-3. Use `https://<usuario>-<space>.hf.space` como endereço no app.
-
-Limitações: na CPU gratuita cada música leva vários minutos, o Space hiberna depois de um tempo sem uso, e o YouTube costuma bloquear IPs de nuvem. Se der erro de "Sign in to confirm you're not a bot", exporte um `cookies.txt` do YouTube, coloque junto no Space e defina `YTDLP_COOKIES=/home/user/app/cookies.txt`.
-
-## 3. Frontend na Vercel
-
-- Importe o repositório na Vercel com **Root Directory = `frontend`** (o `vercel.json` já define o build).
-- Opcional: a variável `VITE_API_URL` define o servidor padrão; ele também pode ser trocado em Ajustes.
-
-Para desenvolver localmente: `cd frontend && npm install && npm run dev`.
-
-## Uso
-
-- **Separar**: cole o link → acompanhe o progresso → a música vai para "Todas".
-- **Playlists**: "+ Playlist" cria uma; o menu ⋮ de cada música adiciona ou remove de playlists; ▲▼ reordena.
-- **Mixer**: M = mute, S = solo (duplo clique no nome = ouvir só ela), duplo clique no slider volta ao padrão, ↓ baixa a faixa. A mixagem de cada música fica salva.
+- **Separar**: "Escolher arquivo" ou arraste os arquivos. Dá para enfileirar várias músicas. Mantenha a aba aberta durante o processamento.
+- **Playlists**: "+ Playlist" cria uma playlist. O menu ⋮ de cada música adiciona ou remove de playlists e edita título e artista. ▲▼ reordena.
+- **Mixer**: M = mute, S = solo (duplo clique no nome = ouvir só aquela faixa), duplo clique no slider volta ao padrão, ↓ baixa a faixa em MP3. A mixagem de cada música fica salva.
 - **Atalhos**: espaço = tocar/pausar, ←/→ = 5 s, Esc = voltar.
-- Em Ajustes dá para trazer para outro aparelho as músicas que já estão no servidor.
+- **Ajustes**: qualidade do MP3, status do modelo e espaço usado.
 
-Use apenas para estudo pessoal, com músicas que você tem direito de usar. Baixar do YouTube pode violar os termos de uso da plataforma.
+O nome do arquivo no formato `Artista - Título.mp3` já preenche o artista e o título.
+
+Use só com músicas que você tem direito de usar.

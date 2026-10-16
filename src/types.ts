@@ -2,24 +2,10 @@ export interface Track {
   id: string
   title: string
   artist: string
-  thumbnail: string | null
-  duration: number | null
-  source_url: string
+  duration: number
   stems: string[]
-  model: string
-  created_at: number
-}
-
-export type JobStatus = 'queued' | 'info' | 'downloading' | 'separating' | 'finishing' | 'done' | 'error'
-
-export interface Job {
-  id: string
-  url: string
-  status: JobStatus
-  progress: number
-  message: string
-  title: string | null
-  track_id: string | null
+  file_name: string
+  size: number
   created_at: number
 }
 
@@ -34,6 +20,9 @@ export interface StemInfo {
   label: string
   color: string
 }
+
+/** Ordem de exibição no mixer. */
+export const STEM_ORDER = ['vocals', 'drums', 'bass', 'piano', 'guitar', 'other']
 
 export const STEMS: Record<string, StemInfo> = {
   vocals: { label: 'Voz', color: '#ff5c8a' },

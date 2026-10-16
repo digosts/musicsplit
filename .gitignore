@@ -1,10 +1,8 @@
 node_modules/
 dist/
 dev-dist/
+public/ort/
+*.tsbuildinfo
 .env
 .env.local
-.venv/
-__pycache__/
-backend/data/
-*.pyc
-cookies.txt
+.vercel

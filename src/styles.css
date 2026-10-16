@@ -154,28 +154,43 @@ input:focus-visible {
 
 /* ---------- biblioteca ---------- */
 
-.add label {
-  font-weight: 600;
-  display: block;
-  margin-bottom: 8px;
-}
-
-.add-row {
+.drop {
   display: flex;
-  gap: 8px;
-}
-
-.add-row input {
-  flex: 1;
-  min-width: 0;
-}
-
-.error-card {
-  display: flex;
-  justify-content: space-between;
+  flex-direction: column;
   align-items: center;
-  gap: 8px;
-  color: var(--danger);
+  text-align: center;
+  gap: 4px;
+  padding: 22px 16px;
+  border: 2px dashed var(--border);
+  transition: border-color 0.2s, background 0.2s;
+}
+
+.drop.over {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+}
+
+.drop .primary {
+  margin: 10px 0 4px;
+}
+
+.cover-art {
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  font-size: 1.3rem;
+  color: #fff;
+  text-shadow: 0 1px 4px #0006;
+}
+
+select {
+  width: 100%;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  font: inherit;
+  color: inherit;
 }
 
 .job-head {
@@ -207,6 +222,24 @@ input:focus-visible {
   height: 100%;
   background: linear-gradient(90deg, var(--accent), var(--accent-2));
   transition: width 0.4s;
+}
+
+.progress.indeterminate div {
+  width: 30% !important;
+  animation: slide 1.2s ease-in-out infinite;
+}
+
+@keyframes slide {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(340%);
+  }
+}
+
+.job .ghost.small {
+  margin-top: 4px;
 }
 
 .tabs {
@@ -267,8 +300,7 @@ input:focus-visible {
   text-align: left;
 }
 
-.track-main img,
-.thumb-ph {
+.track-main .cover-art {
   width: 64px;
   height: 48px;
   object-fit: cover;

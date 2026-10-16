@@ -1,6 +1,13 @@
+import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
+
+// Isolamento entre origens: libera SharedArrayBuffer para a IA usar vários núcleos da CPU
+const isolation = {
+  'Cross-Origin-Opener-Policy': 'same-origin',
+  'Cross-Origin-Embedder-Policy': 'require-corp',
+}
 
 export default defineConfig({
   plugins: [
@@ -25,9 +32,18 @@ export default defineConfig({
         ],
       },
       workbox: {
-        // o áudio das músicas fica no IndexedDB; o service worker só guarda o app em si
-        globPatterns: ['**/*.{js,css,html,svg,png,ico,webmanifest}'],
+        // o áudio fica no IndexedDB e o modelo no Cache Storage; aqui só o app e o runtime da IA (.wasm)
+        globPatterns: ['**/*.{js,mjs,css,html,svg,png,ico,webmanifest,wasm}'],
+        maximumFileSizeToCacheInBytes: 40 * 1024 * 1024,
       },
     }),
   ],
+  resolve: {
+    // versão do ONNX Runtime que carrega o runtime (.mjs/.wasm) de /ort/ — necessária para as threads funcionarem
+    alias: [{ find: /^onnxruntime-web$/, replacement: fileURLToPath(new URL('./node_modules/onnxruntime-web/dist/ort.wasm.min.mjs', import.meta.url)) }],
+  },
+  worker: { format: 'es' },
+  optimizeDeps: { exclude: ['onnxruntime-web'] },
+  server: { headers: isolation },
+  preview: { headers: isolation },
 })

@@ -1,43 +1,51 @@
-import { useMemo, useState, type FormEvent } from 'react'
-import { formatBytes, formatTime } from '../api'
+import { useMemo, useRef, useState, type DragEvent } from 'react'
 import type { PlaylistActions } from '../App'
-import type { LocalTrack } from '../db'
-import { stemInfo, type Job, type Playlist } from '../types'
+import type { Job } from '../separator/queue'
+import { stemInfo, type Playlist, type Track } from '../types'
+import { formatBytes, formatTime } from '../utils'
+import Cover from './Cover'
 
 interface Props {
-  tracks: LocalTrack[]
+  loaded: boolean
+  tracks: Track[]
   playlists: Playlist[]
   jobs: Job[]
-  importing: Record<string, number>
   listId: string
-  error: string | null
-  onDismissError: () => void
   onListChange: (id: string) => void
-  listTracks: (id: string) => LocalTrack[]
-  onAddJob: (url: string) => Promise<void>
+  listTracks: (id: string) => Track[]
+  onAddFiles: (files: File[]) => void
+  onCancelJob: (id: string) => void
   onDismissJob: (id: string) => void
-  onOpen: (t: LocalTrack) => void
-  onDelete: (t: LocalTrack) => void
+  onOpen: (t: Track) => void
+  onRename: (t: Track) => void
+  onDelete: (t: Track) => void
   playlistActions: PlaylistActions
 }
 
 const STATUS_LABEL: Record<string, string> = {
   queued: 'Na fila',
-  info: 'Lendo vídeo',
-  downloading: 'Baixando',
+  decoding: 'Lendo o arquivo',
+  model: 'Baixando o modelo de IA (só na primeira vez)',
+  loading: 'Preparando a IA',
   separating: 'Separando faixas',
-  finishing: 'Finalizando',
-  done: 'Pronto',
+  saving: 'Salvando',
+  done: 'Pronto!',
   error: 'Erro',
 }
 
+const isAudio = (f: File) => f.type.startsWith('audio/') || f.type.startsWith('video/') || /\.(mp3|m4a|aac|wav|flac|ogg|opus|webm|mp4)$/i.test(f.name)
+
+function formatEta(sec?: number) {
+  if (sec == null || !isFinite(sec)) return ''
+  return sec < 60 ? ` · falta < 1 min` : ` · faltam ~${Math.round(sec / 60)} min`
+}
+
 export default function Library(props: Props) {
-  const { tracks, playlists, jobs, importing, listId, playlistActions: pa } = props
-  const [url, setUrl] = useState('')
-  const [sending, setSending] = useState(false)
-  const [formError, setFormError] = useState<string | null>(null)
+  const { tracks, playlists, jobs, listId, playlistActions: pa } = props
   const [search, setSearch] = useState('')
   const [menuFor, setMenuFor] = useState<string | null>(null)
+  const [dragging, setDragging] = useState(false)
+  const inputRef = useRef<HTMLInputElement>(null)
 
   const playlist = playlists.find((p) => p.id === listId)
   const list = props.listTracks(listId)
@@ -47,27 +55,15 @@ export default function Library(props: Props) {
   }, [list, search])
   const totalSize = tracks.reduce((n, t) => n + t.size, 0)
 
-  const submit = async (e: FormEvent) => {
-    e.preventDefault()
-    if (!url.trim()) return
-    setSending(true)
-    setFormError(null)
-    try {
-      await props.onAddJob(url.trim())
-      setUrl('')
-    } catch (err) {
-      setFormError((err as Error).message)
-    } finally {
-      setSending(false)
-    }
+  const addFiles = (files: FileList | null) => {
+    const ok = Array.from(files ?? []).filter(isAudio)
+    if (ok.length) props.onAddFiles(ok)
   }
 
-  const paste = async () => {
-    try {
-      setUrl(await navigator.clipboard.readText())
-    } catch {
-      /* sem permissão de leitura da área de transferência */
-    }
+  const onDrop = (e: DragEvent) => {
+    e.preventDefault()
+    setDragging(false)
+    addFiles(e.dataTransfer.files)
   }
 
   const newPlaylist = async () => {
@@ -100,69 +96,85 @@ export default function Library(props: Props) {
         </a>
       </header>
 
-      <form className="card add" onSubmit={submit}>
-        <label htmlFor="url">Separar uma música</label>
-        <div className="add-row">
-          <input
-            id="url"
-            type="url"
-            inputMode="url"
-            placeholder="Cole o link do YouTube…"
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
-          />
-          {!url && 'clipboard' in navigator && (
-            <button type="button" className="ghost" onClick={paste}>
-              Colar
-            </button>
-          )}
-          <button type="submit" className="primary" disabled={sending || !url.trim()}>
-            {sending ? 'Enviando…' : 'Separar'}
-          </button>
-        </div>
-        <p className="hint">Voz · Bateria · Baixo · Piano · Guitarra · Outros — separação por IA (Demucs)</p>
-        {formError && <p className="error">{formError}</p>}
-      </form>
-
-      {props.error && (
-        <div className="card error-card">
-          <span>{props.error}</span>
-          <button className="ghost" onClick={props.onDismissError}>
-            ✕
-          </button>
-        </div>
-      )}
+      <div
+        className={`card drop ${dragging ? 'over' : ''}`}
+        onDragOver={(e) => {
+          e.preventDefault()
+          setDragging(true)
+        }}
+        onDragLeave={() => setDragging(false)}
+        onDrop={onDrop}
+      >
+        <input
+          ref={inputRef}
+          type="file"
+          accept="audio/*,video/mp4,video/webm,.mp3,.m4a,.wav,.flac,.ogg,.opus"
+          multiple
+          hidden
+          onChange={(e) => {
+            addFiles(e.target.files)
+            e.target.value = ''
+          }}
+        />
+        <strong>Separar uma música</strong>
+        <p className="hint">Escolha ou arraste arquivos de áudio (MP3, M4A, WAV, FLAC, OGG).</p>
+        <button className="primary" onClick={() => inputRef.current?.click()}>
+          Escolher arquivo
+        </button>
+        <p className="hint">
+          A IA (Demucs) separa voz, bateria, baixo, piano, guitarra e outros aqui mesmo no seu aparelho, sem enviar nada para a internet.
+        </p>
+      </div>
 
       {jobs.length > 0 && (
         <section className="jobs">
           {jobs.map((job) => {
-            const imp = job.track_id != null ? importing[job.track_id] : undefined
-            const saving = imp !== undefined
-            const pct = saving ? imp : job.progress
+            const active = !['done', 'error', 'queued'].includes(job.status)
+            const finished = job.status === 'done' || job.status === 'error'
             return (
               <div key={job.id} className={`card job ${job.status}`}>
                 <div className="job-head">
-                  <strong>{job.title ?? job.url}</strong>
-                  {(job.status === 'done' || job.status === 'error') && !saving && (
+                  <strong>{job.title}</strong>
+                  {finished ? (
                     <button className="ghost small" onClick={() => props.onDismissJob(job.id)} aria-label="Remover">
                       ✕
+                    </button>
+                  ) : (
+                    <button className="ghost small" onClick={() => props.onCancelJob(job.id)}>
+                      Cancelar
                     </button>
                   )}
                 </div>
                 <div className="job-status">
-                  {saving ? 'Salvando no aparelho' : STATUS_LABEL[job.status]}
-                  {job.status !== 'error' && job.status !== 'queued' && ` · ${Math.round(pct)}%`}
+                  {STATUS_LABEL[job.status]}
+                  {active && job.status !== 'decoding' && job.status !== 'loading' && ` · ${Math.round(job.progress * 100)}%`}
+                  {job.status === 'model' && job.detail && ` · ${job.detail}`}
+                  {job.status === 'separating' && formatEta(job.eta)}
+                  {job.backend && active && ` · ${job.backend}`}
                 </div>
                 {job.status === 'error' ? (
-                  <pre className="error">{job.message}</pre>
+                  <p className="error">{job.error}</p>
+                ) : job.status === 'done' ? (
+                  <button
+                    className="ghost small"
+                    onClick={() => {
+                      const t = tracks.find((tr) => tr.id === job.trackId)
+                      if (t) props.onOpen(t)
+                    }}
+                  >
+                    Abrir no mixer →
+                  </button>
                 ) : (
-                  <div className="progress">
-                    <div style={{ width: `${job.status === 'done' && !saving ? 100 : pct}%` }} />
+                  <div className={`progress ${job.status === 'decoding' || job.status === 'loading' ? 'indeterminate' : ''}`}>
+                    <div style={{ width: `${job.progress * 100}%` }} />
                   </div>
                 )}
               </div>
             )
           })}
+          {jobs.some((j) => !['done', 'error'].includes(j.status)) && (
+            <p className="hint">Mantenha esta aba aberta enquanto as músicas são separadas.</p>
+          )}
         </section>
       )}
 
@@ -200,10 +212,10 @@ export default function Library(props: Props) {
         )}
       </div>
 
-      {filtered.length === 0 ? (
+      {!props.loaded ? null : filtered.length === 0 ? (
         <div className="empty">
           {tracks.length === 0
-            ? 'Nenhuma música ainda. Cole um link do YouTube acima para começar.'
+            ? 'Nenhuma música ainda. Escolha um arquivo acima para começar.'
             : playlist
               ? 'Playlist vazia. Use o menu ⋮ de uma música em "Todas" para adicioná-la aqui.'
               : 'Nada encontrado.'}
@@ -213,11 +225,12 @@ export default function Library(props: Props) {
           {filtered.map((t, i) => (
             <li key={t.id} className="track">
               <button className="track-main" onClick={() => props.onOpen(t)}>
-                {t.thumbnail ? <img src={t.thumbnail} alt="" loading="lazy" /> : <div className="thumb-ph">♪</div>}
+                <Cover title={t.title} />
                 <div className="track-text">
                   <strong>{t.title}</strong>
                   <span>
-                    {t.artist} · {formatTime(t.duration)}
+                    {t.artist ? `${t.artist} · ` : ''}
+                    {formatTime(t.duration)}
                   </span>
                   <span className="dots">
                     {t.stems.map((s) => (
@@ -251,9 +264,9 @@ export default function Library(props: Props) {
                       </label>
                     ))}
                     <hr />
-                    <a className="menu-item" href={t.source_url} target="_blank" rel="noreferrer">
-                      Abrir no YouTube
-                    </a>
+                    <button className="menu-item" onClick={() => props.onRename(t)}>
+                      Editar título/artista
+                    </button>
                     <button className="menu-item danger" onClick={() => props.onDelete(t)}>
                       Excluir do aparelho
                     </button>

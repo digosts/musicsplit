@@ -1,7 +1,0 @@
-# O torch é instalado à parte (versão com CUDA para GPU NVIDIA) — veja o README.
-demucs==4.1.0
-yt-dlp>=2026.8.19
-fastapi>=0.140
-uvicorn[standard]>=0.50
-soundfile>=0.13
-numpy<2

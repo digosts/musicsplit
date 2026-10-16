@@ -1,14 +1,15 @@
 import { useEffect, useRef, useState, type PointerEvent as RPointerEvent } from 'react'
-import { formatTime } from '../api'
-import { getFile, getFileUrls, type LocalTrack } from '../db'
+import { getFile, getFileUrls } from '../db'
 import { useMixer } from '../mixer'
-import { stemInfo } from '../types'
+import { stemInfo, type Track } from '../types'
+import { formatTime } from '../utils'
+import Cover from './Cover'
 
 interface Props {
-  track: LocalTrack
-  queue: LocalTrack[]
+  track: Track
+  queue: Track[]
   onBack: () => void
-  onSelect: (t: LocalTrack) => void
+  onSelect: (t: Track) => void
 }
 
 const SPEEDS = [0.5, 0.75, 0.9, 1, 1.1, 1.25]
@@ -57,7 +58,7 @@ export default function Player({ track, queue, onBack, onSelect }: Props) {
     navigator.mediaSession.metadata = new MediaMetadata({
       title: track.title,
       artist: track.artist,
-      artwork: track.thumbnail ? [{ src: track.thumbnail, sizes: '480x360' }] : [],
+      artwork: [{ src: '/pwa-512x512.png', sizes: '512x512', type: 'image/png' }],
     })
     const ms = navigator.mediaSession
     ms.setActionHandler('play', () => mRef.current.play())
@@ -98,7 +99,7 @@ export default function Player({ track, queue, onBack, onSelect }: Props) {
           <strong>{track.title}</strong>
           <span>{track.artist}</span>
         </div>
-        {track.thumbnail ? <img className="cover" src={track.thumbnail} alt="" /> : <div className="cover" />}
+        <Cover title={track.title} className="cover cover-art" />
       </header>
 
       {!m.ready && (
